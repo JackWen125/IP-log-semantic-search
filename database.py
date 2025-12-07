@@ -1,7 +1,16 @@
 import tkinter as tk
 import sqlite3
+import sqlite_vec
 from tkinter import messagebox
+import csv
 import os
+from pathlib import Path
+from typing import List
+import struct
+
+def serialize_f32(vector: List[float]) -> bytes:
+    """serializes a list of floats into a compact "raw bytes" format"""
+    return struct.pack("%sf" % len(vector), *vector)
 
 class Database:
     def __init__(self):
@@ -55,37 +64,57 @@ class Database:
         rest += ')'
         self.cursor.execute(front + rest)
 
-    def load_log_file(self, log_file_dir):
-        file_name = os.path.basename(log_file_dir)
-        os.chdir(log_file_dir.rstrip(file_name))
-        os.chdir('..')
-        loaded = False
-        if os.path.isfile(file_name.rsplit('.')[0] + '.db'):
-            loaded = True
-        self.conn = sqlite3.connect(file_name.rsplit('.')[0] + '.db')
-        self.cursor = self.conn.cursor()
+    def hashInsert(self, url_line): # UNFINISHED
+        for url in url_line:
+            hash_id = hash(url)
+            self.cursor.execute("SELECT 1 FROM " + self.db_name + " WHERE id = ?", (hash_id,))
+            exists = self.cursor.fetchone()
+            if not exists:
+                self.cursor.execute("INSERT INTO " + self.db_name + " VALUES (?)", (hash_id,))
 
+        self.cursor.execute("INSERT INTO urls VALUES (?)", (url,))
+
+    def load_csv_file(self, csv_file_path):
+        file_name_with_type = os.path.basename(csv_file_path)
+        file_name = os.path.splitext(file_name_with_type)[0]
+        self.db_name = file_name
+        db_dir = Path(__file__).absolute().parent / "db files"
+        loaded = False
+        if os.path.isfile(db_dir / f"{file_name}.db"):
+            loaded = True
+        os.chdir(db_dir)
+        self.conn = sqlite3.connect(f"{file_name}.db")
+        self.cursor = self.conn.cursor()
+        loaded = False
         if not loaded:
-            self.cursor.execute('''CREATE TABLE IF NOT EXISTS log (id INTEGER PRIMARY KEY, col_1 TEXT)''')
+            self.cursor.execute("CREATE TABLE IF NOT EXISTS " + file_name + "(id INTEGER PRIMARY KEY, url TEXT, embedding BLOB)")
             self.conn.commit()
-            log_file = open(log_file_dir, mode='r')
-            for i, line in enumerate(log_file):
-                self.insertRow([i, line])
+            with open(csv_file_path, mode='r') as file:
+                csv_file = csv.reader(file)
+                for line in csv_file:
+                    for url in line:
+                        hash_id = hash(url)
+                        self.cursor.execute("INSERT INTO " + file_name + " VALUES (?, ?, ?)", (hash_id, url, None))
         self.conn.commit()
+        if loaded:
+            return "db for csv file already exists"
+        else:
+            return "created db for csv file"
 
     def open_db_file(self, db_file_dir):
         self.conn = sqlite3.connect(db_file_dir)
         self.cursor = self.conn.cursor()
 
-    def query_entire_database(self):
-        if self.conn:
-            self.cursor.execute("SELECT * FROM log")
-            log = self.cursor.fetchall()
-            return log
-        else:
-            return 0
+    def query_entire_database(self, db_name):
+        db_dir = Path(__file__).absolute().parent / "db files"
+        os.chdir(db_dir)
+        self.conn = sqlite3.connect(db_name)
+        self.cursor = self.conn.cursor()
+        self.cursor.execute("SELECT * FROM " + db_name.split(".")[0])
+        csv = self.cursor.fetchall()
+        return csv
 
-    def split(self, delimiter):
+    def split(self, delimiter): # not used
         cur = self.cursor
 
         # 1. Get existing columns (in order)

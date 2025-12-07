@@ -1,15 +1,22 @@
 from database import Database
 import filedialpy
 import os
+from pathlib import Path
 import tkinter as tk
 from tkinter import ttk
 import sqlite3
+import sqlite_vec
+import requests
+import ollama
+import semchunk
+import re
+from bs4 import BeautifulSoup
 
 class GUI(tk.Tk):
     def __init__(self):
         super().__init__()
 
-        self.title("log searcher")
+        self.title("csv searcher")
         self.geometry("800x600")
 
         # Container frame that will hold all screens
@@ -41,51 +48,50 @@ class GUI(tk.Tk):
         if hasattr(frame, 'on_show'):
             frame.on_show()
 
-    def open_log_file(self):
+    def open_csv_file(self, option):
         self.database = Database()
+        if (option == "filediag"):
+            self.csv_file_dir = filedialpy.openFile()
+        if (option == "default"):
+            main_dir = Path(__file__).absolute().parent
+            self.csv_file_dir = main_dir / 'csv files' / 'sampleURLs.csv'
+        self.frames[DataScreen].status.set(f"Opening {self.csv_file_dir}")
+        response = self.database.load_csv_file(self.csv_file_dir)
+        self.frames[DataScreen].setup_ui()
+        self.frames[DataScreen].status.set(response)
 
-        self.log_file_dir = filedialpy.openFile()
-        self.frames[DataScreen].status.set(f"Opening {self.log_file_dir}")
-        self.database.load_log_file(self.log_file_dir)
-        log = self.database.query_entire_database()
-        if log:
-            self.frames[DataScreen].create_tree_view(log)
-            self.frames[DataScreen].status.set(f"Opened {self.log_file_dir}")
-        else:
-            self.frames[DataScreen].status.set("No database loaded")
-
-    def open_default_log_file(self):
+    def open_db_file(self, db_dir):
         self.database = Database()
-        self.log_file_dir = "D:\semantic DNS search\log files\dns.log"
-        self.frames[DataScreen].status.set(f"Opening {self.log_file_dir}")
-        self.database.load_log_file(self.log_file_dir)
-        log = self.database.query_entire_database()
-        if log:
-            self.frames[DataScreen].create_tree_view(log)
-            self.frames[DataScreen].status.set(f"Opened {self.log_file_dir}")
+        csv = self.database.query_entire_database(Path(db_dir).name)
+        if csv:
+            self.frames[DataScreen].create_tree_view(csv)
+            self.frames[DataScreen].status.set(f"Opened {Path(db_dir).name}")
         else:
-            self.frames[DataScreen].status.set("No database loaded")
+            self.frames[DataScreen].status.set("could not open database")
 
-    def white_space_delimiter(self):
+    def generate_embedding(self):
+        return
+
+    def white_space_delimiter(self): # Not used
         self.database.split(" ")
-        # file_name = os.path.basename(self.log_file_dir).rsplit('.')[0]
-        db_file_dir = os.path.join(os.path.split(os.path.split(self.log_file_dir)[0])[0], os.path.basename(self.log_file_dir).rsplit('.')[0] + ".db")
-        # db_file_dir = self.log_file_dir.rstrip(db_file_name) + ".db"
+        # file_name = os.path.basename(self.csv_file_dir).rsplit('.')[0]
+        db_file_dir = os.path.join(os.path.split(os.path.split(self.csv_file_dir)[0])[0], os.path.basename(self.csv_file_dir).rsplit('.')[0] + ".db")
+        # db_file_dir = self.csv_file_dir.rstrip(db_file_name) + ".db"
         self.database.open_db_file(db_file_dir)
-        self.frames[DataScreen].status.set(f"Opening {self.log_file_dir}")
-        log = self.database.query_entire_database()
-        if log:
+        self.frames[DataScreen].status.set(f"Opening {self.csv_file_dir}")
+        csv = self.database.query_entire_database()
+        if csv:
             self.frames[DataScreen].tree_frame.destroy()
-            self.frames[DataScreen].create_tree_view(log)
-            self.frames[DataScreen].status.set(f"updated {self.log_file_dir}")
+            self.frames[DataScreen].create_tree_view(csv)
+            self.frames[DataScreen].status.set(f"updated {self.csv_file_dir}")
         else:
             self.frames[DataScreen].status.set("No database loaded")
 
     def delete_db(self):
-        sql = 'DELETE FROM log'
-        self.log_file_dir = "D:\semantic DNS search\log files\dns.log"
+        sql = 'DELETE FROM csv'
+        self.csv_file_dir = r"D:\semantic DNS search\csv files\dns.csv"
         if not self.database.conn:
-            self.database.conn = sqlite3.connect(self.log_file_dir.rsplit('.')[0] + '.db')
+            self.database.conn = sqlite3.connect(self.csv_file_dir.rsplit('.')[0] + '.db')
         self.database.cursor = self.database.conn.cursor()
         self.database.cursor.execute(sql)
         self.database.conn.commit()
@@ -129,38 +135,7 @@ class HomeScreen(BaseScreen):
         title = tk.Label(self, text="Home Screen", font=("Arial", 24, "bold"))
         title.pack(pady=20)
 
-        # Navigation buttons
-        nav_frame = tk.Frame(self)
-        nav_frame.pack(pady=20)
 
-        tk.Button(nav_frame, text="Go to Settings",
-                  command=lambda: self.controller.show_frame(SettingsScreen),
-                  width=20, height=2).pack(pady=5)
-
-        tk.Button(nav_frame, text="Go to Data",
-                  command=lambda: self.controller.show_frame(DataScreen),
-                  width=20, height=2).pack(pady=5)
-
-        # Some interactive widgets
-        content_frame = tk.Frame(self, relief="sunken", bd=2)
-        content_frame.pack(pady=20, padx=20, fill="both", expand=True)
-
-        tk.Label(content_frame, text="Welcome to the Home Screen!",
-                 font=("Arial", 14)).pack(pady=10)
-
-        # Counter example
-        self.counter = 0
-        self.counter_label = tk.Label(content_frame, text=f"Counter: {self.counter}",
-                                      font=("Arial", 12))
-        self.counter_label.pack(pady=10)
-
-        tk.Button(content_frame, text="Increment Counter",
-                  command=self.increment_counter).pack(pady=5)
-
-    def increment_counter(self):
-        """Update the counter label"""
-        self.counter += 1
-        self.counter_label.config(text=f"Counter: {self.counter}")
 
 
 class SettingsScreen(BaseScreen):
@@ -233,13 +208,19 @@ class DataScreen(BaseScreen):
         file_button = tk.Menu(menu_bar, tearoff=0)
         edit_button = tk.Menu(menu_bar, tearoff=0)
         menu_bar.add_cascade(label='file', menu=file_button)
-        file_button.add_command(label='Open log file', command=lambda: self.controller.open_log_file())
-        file_button.add_command(label='Open default file', command=lambda: self.controller.open_default_log_file())
+        file_button.add_command(label='Open csv file', command=lambda: self.controller.open_csv_file("filediag"))
+        file_button.add_command(label='Open default csv file', command=lambda: self.controller.open_csv_file("default"))
+
+        db_files_dir = Path(__file__).absolute().parent / "db files"
+        for file in db_files_dir.iterdir():
+            if file.suffix.lower() == ".db":
+                file_button.add_command(label='Open ' + os.path.basename(file).split('.')[0] + ' database', command=lambda: self.controller.open_db_file(file))
+
         file_button.add_command(label='delete db', command=lambda: self.controller.delete_db())
-        file_button.add_separator()
-        file_button.add_command(label='Back', command=lambda: self.controller.show_frame(HomeScreen))
-        menu_bar.add_cascade(label='edit', menu=edit_button)
-        edit_button.add_command(label='use white space delimiter', command=lambda: self.controller.white_space_delimiter())
+        menu_bar.add_command(label='generate embedding for db', command=lambda: self.controller.generate_embedding())
+        # edit_button.add_command(label='use white space delimiter', command=lambda: self.controller.white_space_delimiter())
+        menu_bar.add_command(label='go to semantic search', command=lambda: self.controller.show_frame(HomeScreen))
+        menu_bar.add_command(label='go to data screen', command=lambda: self.controller.show_frame(DataScreen))
         self.controller.config(menu=menu_bar)
 
         self.status = StatusBar(self)
@@ -260,18 +241,17 @@ class DataScreen(BaseScreen):
         tree.pack(fill="both", expand=True)
         scroll_bar.config(command=tree.yview)
 
-        columns = ["index"]
-        for i in range(len(data[0])):
-            columns.append(f"col_{i}")
+        columns = ["index", "id", "url", "hash id"]
 
         columns_num = len(columns)
-        column_width = int((3000 - 15)/columns_num)
+        # column_width = int((3000 - 15)/columns_num)
 
         tree['columns'] = columns
 
+        """
         for i in range(columns_num):
             if i == 1:
-                tree.column(f"#{i}", anchor=tk.W, stretch=tk.NO, width=30)
+                tree.column(f"#{i}", anchor=tk.W, stretch=tk.NO, width=120)
             else:
                 tree.column(f"#{i}", anchor=tk.W, stretch=tk.NO, width=column_width)
 
@@ -279,7 +259,14 @@ class DataScreen(BaseScreen):
             if i == 0:
                 tree.heading("#0", anchor=tk.W, text="ID")
             else:
-                tree.heading(f"#{i}", text=f"col_{i}")
+                tree.heading(f"#{i}", text=f"col_{i}")"""
+
+        tree.column(f"#{1}", anchor=tk.W, stretch=tk.NO, width=130)
+        tree.column(f"#{2}", anchor=tk.W, stretch=tk.NO, width=500)
+        tree.column(f"#{3}", anchor=tk.W, stretch=tk.NO, width=170)
+        tree.heading("#1", anchor=tk.W, text="ID")
+        tree.heading("#2", text="URL")
+        tree.heading("#3", text="embedding")
 
         # insert
         for i, row in enumerate(data):
@@ -287,13 +274,33 @@ class DataScreen(BaseScreen):
 
 
 if __name__ == "__main__":
+    """
+    url = 'https://www.reddit.com/r/Volkswagen/comments/106d8cc/oil_sensor_service_vehicle_light/'
+    try:
+        r = requests.get(url)
+    except requests.exceptions.RequestException as e:
+        print(f"exception: {e}")
+    divider = r"==============================================================================================="
 
-    # log_file_dir = "D:\semantic DNS search\log files\dns.log"
-    # conn = sqlite3.connect(log_file_dir.rsplit('.')[0] + '.db')
-    # sql_query = """SELECT name FROM sqlite_master WHERE type='table';"""
-    # cursor = conn.cursor()
-    # cursor.execute(sql_query)
-    # print(cursor.fetchall())
+    # Parse the source code using BeautifulSoup
+    text = BeautifulSoup(r.text, 'html.parser')
+
+    # Extract the plain text content
+    """
+
+    # text_cleaned = re.sub(r"(\n|\s{2,})", " ", text.get_text(separator=" "))
+    """
+    print(text_cleaned)
+    print(f"length of text_cleaned: {len(text_cleaned)}")
+
+    text_chunks = semchunk.chunkerify(lambda text_cleaned: len(text_cleaned) / 4, 500)(text_cleaned, overlap=0.2)
+
+    print(f"number of chunks: {len(text_chunks)}")
+
+    embeddings = ollama.embed(model='nomic-embed-text', input=text_chunks)
+
+    print(f"number of vectors: {len(embeddings["embeddings"][0])}")
+    """
 
     root = GUI()
     root.mainloop()
