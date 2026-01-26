@@ -1,0 +1,6 @@
+sqlite_vec
+requests
+ollama
+semchunk
+beautifulsoup4
+filedialpy

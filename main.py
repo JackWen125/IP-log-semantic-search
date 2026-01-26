@@ -14,8 +14,12 @@ class GUI(tk.Tk):
         self.title("csv searcher")
         self.geometry("800x600")
         self.current_screen = "DataScreen"
+        #######################################################
+        # UPDATE THIS TO THE EMBEDDING MODEL YOU WANT TO USE
+        self.ollama_model = "nomic-embed-text"
+        #######################################################
 
-        self.database = Database()
+        self.database = Database(self.ollama_model)
 
         # Container frame that will hold all screens
         container = tk.Frame(self)

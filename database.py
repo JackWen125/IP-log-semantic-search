@@ -19,7 +19,10 @@ def serialize_f32(vector: List[float]) -> bytes:
     return struct.pack("%sf" % len(vector), *vector)
 
 class Database:
-    def __init__(self):
+    def __init__(self, model="nomic-embed-text"):
+
+        self.model = model
+
         # Create a database or connect to an existing one
         # self.conn = sqlite3.connect("testdb.db")
         # self.cursor = self.conn.cursor()
@@ -96,7 +99,6 @@ class Database:
         sqlite_vec.load(self.conn)
         self.conn.enable_load_extension(False)
         self.cursor = self.conn.cursor()
-        loaded = False
         if not loaded:
             self.cursor.execute("CREATE TABLE IF NOT EXISTS " + file_name + "(id INTEGER PRIMARY KEY, url TEXT)")
             self.conn.commit()
@@ -106,7 +108,7 @@ class Database:
                     for url in line:
                         hash_id = hash(url)
                         self.cursor.execute("INSERT INTO " + file_name + " VALUES (?, ?)", (hash_id, url))
-        self.conn.commit()
+            self.conn.commit()
         if loaded:
             return "db for csv file already exists"
         else:
@@ -178,7 +180,7 @@ class Database:
                     """
                 ).fetchone()[0]
             generating_index = 0
-            zero_embedding = serialize_f32([0.0] * 768)
+            # zero_embedding = serialize_f32([0.0] * 768)
             deleted_rows = 0
             ollama_errors = 0
             for id, url in data:
@@ -212,7 +214,7 @@ class Database:
                     text_chunks_pieces = [text_chunks[i:i + 10] for i in range(0, len(text_chunks), 10)]
                     for piece in text_chunks_pieces:
                         try:
-                            embeddings = ollama.embed(model='nomic-embed-text', input=piece)
+                            embeddings = ollama.embed(model=self.model, input=piece)
                         except ConnectionError:
                             return "Ollama service not running, network issues, invalid host"
                         except ollama.RequestError:
@@ -257,6 +259,6 @@ class Database:
         LIMIT ?;           -- final number of unique URLs you want
         """
 
-        query_vector = ollama.embed(model='nomic-embed-text', input=input_query)
+        query_vector = ollama.embed(model=self.model, input=input_query)
         rows = self.cursor.execute(sql, [serialize_f32(query_vector["embeddings"][0]), 1000, 5]).fetchall()
         return rows
